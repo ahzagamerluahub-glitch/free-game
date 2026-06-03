@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Runner Game Mode</title>
+<style>
+  body { margin:0; background:#111; color:white; font-family:sans-serif; }
+  canvas { display:block; margin:auto; background:#222; }
+
+  #menu {
+    position:absolute;
+    top:0; left:0;
+    width:100%; height:100%;
+    background:#000;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+  }
+
+  button {
+    padding:15px 30px;
+    margin:10px;
+    font-size:18px;
+  }
+
+  #controls {
+    position:fixed;
+    bottom:20px;
+    width:100%;
+    display:none;
+    justify-content:center;
+    gap:20px;
+  }
+
+  .btn {
+    width:80px;
+    height:80px;
+    background:#444;
+    color:white;
+    font-size:18px;
+    border:none;
+    border-radius:10px;
+  }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>Runner Game</h1>
+  <button onclick="startSingle()">Single Player (HP)</button>
+  <button onclick="startMulti()">Multiplayer (Stick)</button>
+</div>
+
+<canvas id="game" width="800" height="400"></canvas>
+
+<div id="controls">
+  <button class="btn" onclick="left()">⬅</button>
+  <button class="btn" onclick="jump()">⬆</button>
+  <button class="btn" onclick="right()">➡</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let mode = "none";
+
+// PLAYER
+let player = {
+  x: 100,
+  y: 300,
+  w: 30,
+  h: 30,
+  vy: 0,
+  speed: 5,
+  boost: false
+};
+
+const gravity = 0.8;
+let obstacles = [];
+let frame = 0;
+let keys = {};
+
+// INPUT keyboard
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// MOBILE BUTTONS
+function left(){ keys["ArrowLeft"] = true; setTimeout(()=>keys["ArrowLeft"]=false,100); }
+function right(){ keys["ArrowRight"] = true; setTimeout(()=>keys["ArrowRight"]=false,100); }
+function jump(){ keys[" "] = true; setTimeout(()=>keys[" "] = false,100); }
+
+// START MODES
+function startSingle(){
+  mode = "single";
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("controls").style.display = "flex";
+  gameLoop();
+}
+
+function startMulti(){
+  mode = "multi";
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("controls").style.display = "none";
+  gameLoop();
+}
+
+// OBSTACLE
+function spawnObstacle(){
+  let size = 20 + Math.random()*40;
+  obstacles.push({ x:800, y:370-size, w:size, h:size });
+}
+
+function collide(a,b){
+  return a.x < b.x+b.w &&
+         a.x+a.w > b.x &&
+         a.y < b.y+b.h &&
+         a.y+a.h > b.y;
+}
+
+// UPDATE
+function update(){
+
+  let speed = player.speed;
+
+  // MULTIPLAYER MODE = BOOST + STICK (simulasi)
+  if(mode === "multi"){
+    player.boost = false;
+
+    // Xbox controller
+    let gp = navigator.getGamepads()[0];
+    if(gp){
+      let xAxis = gp.axes[0];
+
+      if(xAxis > 0.2) player.x += speed;
+      if(xAxis < -0.2) player.x -= speed;
+
+      if(gp.buttons[0].pressed && player.y >= 300){
+        player.vy = -15;
+      }
+
+      if(gp.buttons[5].pressed) speed *= 2; // RT boost
+    }
+  }
+
+  // SINGLE MODE = HP + keyboard
+  if(mode === "single"){
+    if(keys["ArrowLeft"]) player.x -= speed;
+    if(keys["ArrowRight"]) player.x += speed;
+
+    if(keys[" "] && player.y >= 300){
+      player.vy = -15;
+    }
+  }
+
+  // gravity
+  player.vy += gravity;
+  player.y += player.vy;
+
+  if(player.y > 300){
+    player.y = 300;
+    player.vy = 0;
+  }
+
+  // obstacles
+  obstacles.forEach(o => o.x -= speed);
+  obstacles = obstacles.filter(o => o.x + o.w > 0);
+
+  if(frame % 80 === 0) spawnObstacle();
+
+  for(let o of obstacles){
+    if(collide(player,o)){
+      alert("Game Over!");
+      location.reload();
+    }
+  }
+
+  frame++;
+}
+
+// DRAW
+function draw(){
+  ctx.clearRect(0,0,800,400);
+
+  ctx.fillStyle="lime";
+  ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  ctx.fillStyle="red";
+  obstacles.forEach(o=>{
+    ctx.fillRect(o.x,o.y,o.w,o.h);
+  });
+
+  ctx.fillStyle="white";
+  ctx.fillRect(0,330,800,2);
+
+  ctx.fillStyle="white";
+  ctx.fillText("Mode: " + mode, 20, 20);
+}
+
+// LOOP
+function gameLoop(){
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+</script>
+
+</body>
+</html>
