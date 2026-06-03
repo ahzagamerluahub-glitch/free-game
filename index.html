@@ -2,208 +2,171 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Runner Game Mode</title>
+<title>2P Runner Pro</title>
 <style>
-  body { margin:0; background:#111; color:white; font-family:sans-serif; }
-  canvas { display:block; margin:auto; background:#222; }
+body { margin:0; background:#0a0a0a; overflow:hidden; font-family:sans-serif; }
+canvas { display:block; margin:auto; background:linear-gradient(#111,#222); }
 
-  #menu {
-    position:absolute;
-    top:0; left:0;
-    width:100%; height:100%;
-    background:#000;
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-    align-items:center;
-  }
-
-  button {
-    padding:15px 30px;
-    margin:10px;
-    font-size:18px;
-  }
-
-  #controls {
-    position:fixed;
-    bottom:20px;
-    width:100%;
-    display:none;
-    justify-content:center;
-    gap:20px;
-  }
-
-  .btn {
-    width:80px;
-    height:80px;
-    background:#444;
-    color:white;
-    font-size:18px;
-    border:none;
-    border-radius:10px;
-  }
+#ui {
+  position:fixed;
+  top:10px;
+  left:10px;
+  color:white;
+}
 </style>
 </head>
 <body>
 
-<div id="menu">
-  <h1>Runner Game</h1>
-  <button onclick="startSingle()">Single Player (HP)</button>
-  <button onclick="startMulti()">Multiplayer (Stick)</button>
+<div id="ui">
+  <div id="score">Score: 0</div>
+  <div id="best">Best: 0</div>
 </div>
 
-<canvas id="game" width="800" height="400"></canvas>
-
-<div id="controls">
-  <button class="btn" onclick="left()">⬅</button>
-  <button class="btn" onclick="jump()">⬆</button>
-  <button class="btn" onclick="right()">➡</button>
-</div>
+<canvas id="game" width="900" height="500"></canvas>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-let mode = "none";
+// SCORE SYSTEM (SAVE DEVICE)
+let score = 0;
+let best = localStorage.getItem("bestScore") || 0;
+document.getElementById("best").innerText = "Best: " + best;
 
-// PLAYER
-let player = {
-  x: 100,
-  y: 300,
-  w: 30,
-  h: 30,
-  vy: 0,
-  speed: 5,
-  boost: false
-};
+// PLAYERS
+let p1 = { x:200, y:300, w:30, h:30, color:"cyan" };
+let p2 = { x:250, y:300, w:30, h:30, color:"orange" };
 
-const gravity = 0.8;
-let obstacles = [];
+// OBSTACLES
+let obs = [];
 let frame = 0;
-let keys = {};
 
-// INPUT keyboard
+// SPEED
+let speed = 6;
+
+// INPUT
+let keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-// MOBILE BUTTONS
-function left(){ keys["ArrowLeft"] = true; setTimeout(()=>keys["ArrowLeft"]=false,100); }
-function right(){ keys["ArrowRight"] = true; setTimeout(()=>keys["ArrowRight"]=false,100); }
-function jump(){ keys[" "] = true; setTimeout(()=>keys[" "] = false,100); }
-
-// START MODES
-function startSingle(){
-  mode = "single";
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("controls").style.display = "flex";
-  gameLoop();
+// SPAWN OBSTACLE (pseudo 3D effect)
+function spawn(){
+  let lane = Math.floor(Math.random()*3); // 3 lane
+  obs.push({
+    x:900,
+    y:250 + lane*60,
+    w:30,
+    h:30,
+    depth: Math.random()
+  });
 }
 
-function startMulti(){
-  mode = "multi";
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("controls").style.display = "none";
-  gameLoop();
-}
-
-// OBSTACLE
-function spawnObstacle(){
-  let size = 20 + Math.random()*40;
-  obstacles.push({ x:800, y:370-size, w:size, h:size });
-}
-
-function collide(a,b){
+// COLLISION
+function hit(a,b){
   return a.x < b.x+b.w &&
          a.x+a.w > b.x &&
          a.y < b.y+b.h &&
          a.y+a.h > b.y;
 }
 
+// GAMEPAD SUPPORT (2 stick)
+function getPad(i){
+  let pads = navigator.getGamepads();
+  return pads[i];
+}
+
 // UPDATE
 function update(){
 
-  let speed = player.speed;
+  // PLAYER 1 (keyboard)
+  if(keys["w"]) p1.y -= 6;
+  if(keys["s"]) p1.y += 6;
+  if(keys["a"]) p1.x -= 6;
+  if(keys["d"]) p1.x += 6;
 
-  // MULTIPLAYER MODE = BOOST + STICK (simulasi)
-  if(mode === "multi"){
-    player.boost = false;
+  // PLAYER 2 (stick 2)
+  let gp2 = getPad(1);
+  if(gp2){
+    let x = gp2.axes[0];
+    let y = gp2.axes[1];
 
-    // Xbox controller
-    let gp = navigator.getGamepads()[0];
-    if(gp){
-      let xAxis = gp.axes[0];
+    p2.x += x * 6;
+    p2.y += y * 6;
+  }
 
-      if(xAxis > 0.2) player.x += speed;
-      if(xAxis < -0.2) player.x -= speed;
+  // LIMIT AREA
+  [p1,p2].forEach(p=>{
+    p.x = Math.max(0,Math.min(900,p.x));
+    p.y = Math.max(200,Math.min(450,p.y));
+  });
 
-      if(gp.buttons[0].pressed && player.y >= 300){
-        player.vy = -15;
+  // OBSTACLES MOVE
+  obs.forEach(o=>{
+    o.x -= speed;
+  });
+
+  obs = obs.filter(o=>o.x>-50);
+
+  if(frame % 50 === 0) spawn();
+
+  // COLLISION
+  for(let o of obs){
+    if(hit(p1,o) || hit(p2,o)){
+      if(score > best){
+        localStorage.setItem("bestScore", score);
       }
-
-      if(gp.buttons[5].pressed) speed *= 2; // RT boost
-    }
-  }
-
-  // SINGLE MODE = HP + keyboard
-  if(mode === "single"){
-    if(keys["ArrowLeft"]) player.x -= speed;
-    if(keys["ArrowRight"]) player.x += speed;
-
-    if(keys[" "] && player.y >= 300){
-      player.vy = -15;
-    }
-  }
-
-  // gravity
-  player.vy += gravity;
-  player.y += player.vy;
-
-  if(player.y > 300){
-    player.y = 300;
-    player.vy = 0;
-  }
-
-  // obstacles
-  obstacles.forEach(o => o.x -= speed);
-  obstacles = obstacles.filter(o => o.x + o.w > 0);
-
-  if(frame % 80 === 0) spawnObstacle();
-
-  for(let o of obstacles){
-    if(collide(player,o)){
       alert("Game Over!");
       location.reload();
     }
   }
 
+  // SCORE
+  score++;
+  document.getElementById("score").innerText = "Score: " + score;
+
   frame++;
 }
 
-// DRAW
+// DRAW (pseudo 3D effect)
 function draw(){
-  ctx.clearRect(0,0,800,400);
 
-  ctx.fillStyle="lime";
-  ctx.fillRect(player.x,player.y,player.w,player.h);
+  ctx.clearRect(0,0,900,500);
 
-  ctx.fillStyle="red";
-  obstacles.forEach(o=>{
+  // ROAD (3D illusion)
+  ctx.fillStyle = "#333";
+  ctx.fillRect(0,200,900,300);
+
+  // LANE LINES
+  ctx.strokeStyle = "#555";
+  for(let i=0;i<5;i++){
+    ctx.beginPath();
+    ctx.moveTo(0,200+i*60);
+    ctx.lineTo(900,200+i*60);
+    ctx.stroke();
+  }
+
+  // OBSTACLES
+  obs.forEach(o=>{
+    ctx.fillStyle = "red";
     ctx.fillRect(o.x,o.y,o.w,o.h);
   });
 
-  ctx.fillStyle="white";
-  ctx.fillRect(0,330,800,2);
+  // PLAYERS
+  ctx.fillStyle = p1.color;
+  ctx.fillRect(p1.x,p1.y,p1.w,p1.h);
 
-  ctx.fillStyle="white";
-  ctx.fillText("Mode: " + mode, 20, 20);
+  ctx.fillStyle = p2.color;
+  ctx.fillRect(p2.x,p2.y,p2.w,p2.h);
 }
 
 // LOOP
-function gameLoop(){
+function loop(){
   update();
   draw();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
+
+loop();
 </script>
 
 </body>
