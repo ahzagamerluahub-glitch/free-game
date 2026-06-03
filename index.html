@@ -2,24 +2,67 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>2P Runner Pro</title>
+<title>Stadium Runner Pro</title>
+
 <style>
-body { margin:0; background:#0a0a0a; overflow:hidden; font-family:sans-serif; }
-canvas { display:block; margin:auto; background:linear-gradient(#111,#222); }
+body { margin:0; background:#000; overflow:hidden; font-family:sans-serif; }
+
+canvas { display:block; margin:auto; }
+
+#menu {
+  position:fixed;
+  inset:0;
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  color:white;
+}
+
+button {
+  padding:15px 25px;
+  margin:10px;
+  font-size:18px;
+  cursor:pointer;
+}
 
 #ui {
   position:fixed;
   top:10px;
   left:10px;
   color:white;
+  font-size:16px;
+}
+
+#status {
+  position:fixed;
+  top:10px;
+  right:10px;
+  color:white;
+  font-size:14px;
 }
 </style>
 </head>
+
 <body>
 
+<!-- MENU -->
+<div id="menu">
+  <h1>🏟️ STADIUM RUNNER</h1>
+  <button onclick="startGame('single')">Single Player</button>
+  <button onclick="startGame('multi')">Multiplayer (2 Stick)</button>
+</div>
+
+<!-- UI -->
 <div id="ui">
   <div id="score">Score: 0</div>
   <div id="best">Best: 0</div>
+</div>
+
+<div id="status">
+  🎮 P1: <span id="p1">🔴</span><br>
+  🎮 P2: <span id="p2">🔴</span>
 </div>
 
 <canvas id="game" width="900" height="500"></canvas>
@@ -28,36 +71,40 @@ canvas { display:block; margin:auto; background:linear-gradient(#111,#222); }
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// SCORE SYSTEM (SAVE DEVICE)
+let mode = "none";
+
+// SCORE
 let score = 0;
 let best = localStorage.getItem("bestScore") || 0;
 document.getElementById("best").innerText = "Best: " + best;
 
 // PLAYERS
-let p1 = { x:200, y:300, w:30, h:30, color:"cyan" };
-let p2 = { x:250, y:300, w:30, h:30, color:"orange" };
+let p1 = { x:200, y:320, w:30, h:30, color:"cyan" };
+let p2 = { x:260, y:320, w:30, h:30, color:"orange" };
 
 // OBSTACLES
 let obs = [];
 let frame = 0;
 
-// SPEED
-let speed = 6;
-
-// INPUT
+// KEYBOARD
 let keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-// SPAWN OBSTACLE (pseudo 3D effect)
+// START GAME
+function startGame(m){
+  mode = m;
+  document.getElementById("menu").style.display = "none";
+}
+
+// SPAWN OBSTACLE
 function spawn(){
-  let lane = Math.floor(Math.random()*3); // 3 lane
+  let lane = Math.floor(Math.random()*3);
   obs.push({
     x:900,
-    y:250 + lane*60,
+    y:260 + lane*60,
     w:30,
-    h:30,
-    depth: Math.random()
+    h:30
   });
 }
 
@@ -69,14 +116,26 @@ function hit(a,b){
          a.y+a.h > b.y;
 }
 
-// GAMEPAD SUPPORT (2 stick)
-function getPad(i){
-  let pads = navigator.getGamepads();
-  return pads[i];
-}
+// GAMEPAD AUTO ASSIGN (FIX STICK ERROR)
+let players = { p1:null, p2:null };
 
-// UPDATE
-function update(){
+function scanPads(){
+  let pads = navigator.getGamepads();
+
+  let list = [];
+  for(let i=0;i<pads.length;i++){
+    if(pads[i]) list.push(pads[i]);
+  }
+
+  players.p1 = list[0] || null;
+  players.p2 = list[1] || null;
+
+  requestAnimationFrame(scanPads);
+}
+scanPads();
+
+// UPDATE CONTROLS
+function control(){
 
   // PLAYER 1 (keyboard)
   if(keys["w"]) p1.y -= 6;
@@ -84,14 +143,16 @@ function update(){
   if(keys["a"]) p1.x -= 6;
   if(keys["d"]) p1.x += 6;
 
-  // PLAYER 2 (stick 2)
-  let gp2 = getPad(1);
+  // PLAYER 2 (stick)
+  let gp2 = players.p2;
   if(gp2){
     let x = gp2.axes[0];
     let y = gp2.axes[1];
 
-    p2.x += x * 6;
-    p2.y += y * 6;
+    if(Math.abs(x)>0.2) p2.x += x*5;
+    if(Math.abs(y)>0.2) p2.y += y*5;
+
+    if(gp2.buttons[0].pressed) p2.y -= 8;
   }
 
   // LIMIT AREA
@@ -100,16 +161,18 @@ function update(){
     p.y = Math.max(200,Math.min(450,p.y));
   });
 
-  // OBSTACLES MOVE
-  obs.forEach(o=>{
-    o.x -= speed;
-  });
+  requestAnimationFrame(control);
+}
+control();
 
-  obs = obs.filter(o=>o.x>-50);
+// UPDATE GAME
+function update(){
 
-  if(frame % 50 === 0) spawn();
+  obs.forEach(o => o.x -= 6);
+  obs = obs.filter(o => o.x > -50);
 
-  // COLLISION
+  if(frame % 60 === 0) spawn();
+
   for(let o of obs){
     if(hit(p1,o) || hit(p2,o)){
       if(score > best){
@@ -120,34 +183,56 @@ function update(){
     }
   }
 
-  // SCORE
   score++;
   document.getElementById("score").innerText = "Score: " + score;
 
   frame++;
 }
 
-// DRAW (pseudo 3D effect)
+// DRAW STADIUM
 function draw(){
 
   ctx.clearRect(0,0,900,500);
 
-  // ROAD (3D illusion)
-  ctx.fillStyle = "#333";
-  ctx.fillRect(0,200,900,300);
+  // SKY
+  let sky = ctx.createLinearGradient(0,0,0,500);
+  sky.addColorStop(0,"#070b1f");
+  sky.addColorStop(1,"#111");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,900,500);
 
-  // LANE LINES
-  ctx.strokeStyle = "#555";
-  for(let i=0;i<5;i++){
+  // CROWD
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0,0,900,180);
+
+  for(let i=0;i<150;i++){
+    ctx.fillStyle = Math.random()>0.5 ? "#555" : "#777";
+    ctx.fillRect(Math.random()*900, Math.random()*180, 2,2);
+  }
+
+  // TRACK (pseudo 3D)
+  ctx.fillStyle = "#1a1a1a";
+  ctx.beginPath();
+  ctx.moveTo(150,180);
+  ctx.lineTo(750,180);
+  ctx.lineTo(900,500);
+  ctx.lineTo(0,500);
+  ctx.closePath();
+  ctx.fill();
+
+  // LINES
+  ctx.strokeStyle = "#333";
+  for(let i=0;i<6;i++){
     ctx.beginPath();
-    ctx.moveTo(0,200+i*60);
-    ctx.lineTo(900,200+i*60);
+    let y = 180 + i*60;
+    ctx.moveTo(150,y);
+    ctx.lineTo(750,y);
     ctx.stroke();
   }
 
   // OBSTACLES
+  ctx.fillStyle = "red";
   obs.forEach(o=>{
-    ctx.fillStyle = "red";
     ctx.fillRect(o.x,o.y,o.w,o.h);
   });
 
